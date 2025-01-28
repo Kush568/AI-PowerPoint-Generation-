@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PPT Maker with Images</title>
+    <script src="https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2rem;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #2980b9;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+
+        #loading {
+            display: none;
+            text-align: center;
+            margin: 25px 0;
+            color: #3498db;
+        }
+
+        #preview {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .slide-box {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+        }
+
+        .slide-box h3 {
+            color: #2c3e50;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        .slide-box pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #34495e;
+        }
+
+        .slide-box img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        #downloadBtn {
+            background: #27ae60;
+            margin-top: 25px;
+            display: none;
+        }
+
+        .footer-note {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .slide-box h3 {
+                font-size: 1.2rem;
+            }
+
+            .slide-box pre {
+                font-size: 0.9rem;
+            }
+
+            input[type="text"] {
+                font-size: 14px;
+            }
+
+            button {
+                font-size: 14px;
+                padding: 12px 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI PowerPoint Generator</h1>
+        
+        <div class="input-group">
+            <input type="text" id="topic" 
+                   placeholder="Enter presentation topic (e.g., 'Future of AI')">
+            <button onclick="generatePPT()">Create Presentation</button>
+        </div>
+
+        <div id="loading">🔮 Generating your presentation... This may thake about 20s-25s</div>
+        <div id="preview"></div>
+        <div id="error" class="error-message"></div>
+        <button id="downloadBtn" onclick="downloadPPT()">Download PowerPoint</button>
+        <div class="footer-note">Made by Kush😶‍🌫️ still in development (tip: modify it manually 👍)</div>
+    </div>
+
+    <script>
+        let presentation = null;
+        let generatedContent = [];
+
+        async function generatePPT() {
+            const topic = document.getElementById('topic').value.trim();
+            if (!topic) {
+                showError('Please enter a topic');
+                return;
+            }
+
+            clearError();
+            toggleUI(true);
+
+            try {
+                // Step 1: Generate presentation structure
+                const structurePrompt = `Create a 8-slide presentation about "${topic}". 
+                    For each slide provide:
+                    - Title (short, max 5 words)
+                    - Content (4-5 bullet poinys each in new line)
+                    - Image description (keywords for ai to generate image)
+                    Format response as VALID JSON: 
+                    { "slides": [ { "title": "...", "content": "...", "imagePrompt": "..." } ] }`;
+
+                const textResponse = await fetch(
+                    `https://text.pollinations.ai/${encodeURIComponent(topic)}?model=openai&system=${encodeURIComponent(structurePrompt)}&json=true`
+                );
+                
+                if (!textResponse.ok) throw new Error('Failed to generate content');
+                const textData = await textResponse.json();
+                
+                if (!textData.slides?.length) throw new Error('Invalid slide data received');
+
+                // Step 2: Validate and normalize data
+                const validatedSlides = textData.slides.map(slide => ({
+                    title: slide.title || `Slide ${textData.slides.indexOf(slide) + 1}`,
+                    content: normalizeContent(slide.content),
+                    imagePrompt: slide.imagePrompt || `${topic} ${slide.title}`
+                }));
+
+                // Step 3: Generate images in parallel
+                generatedContent = await Promise.all(
+                    validatedSlides.map(async (slide, index) => {
+                        try {
+                            const imageData = await generateImage(slide.imagePrompt);
+                            return { ...slide, imageData };
+                        } catch (imageError) {
+                            console.warn(`Image error for slide ${index + 1}:`, imageError);
+                            return { ...slide, imageData: null };
+                        }
+                    })
+                );
+
+                // Step 4: Create presentation
+                previewPresentation(generatedContent);
+                createPPTX(generatedContent);
+            } catch (error) {
+                showError(`Error: ${error.message}. Please try again.`);
+                console.error('Generation error:', error);
+            } finally {
+                toggleUI(false);
+            }
+        }
+
+        function normalizeContent(content) {
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) return content.join('\n');
+            return 'Content not available';
+        }
+
+        async function generateImage(prompt) {
+            const imageUrl = new URL(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`);
+            imageUrl.searchParams.append('width', '800');
+            imageUrl.searchParams.append('height', '600');
+            imageUrl.searchParams.append('model', 'flux');
+            imageUrl.searchParams.append('nologo', 'true');
+            imageUrl.searchParams.append('safe', 'true');
+
+            const response = await fetch(imageUrl);
+            if (!response.ok) throw new Error('Image generation failed');
+            
+            const blob = await response.blob();
+            return await blobToBase64(blob);
+        }
+
+        async function blobToBase64(blob) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        function previewPresentation(slides) {
+            const preview = document.getElementById('preview');
+            preview.innerHTML = slides.map((slide, index) => `
+                <div class="slide-box">
+                    <h3>${index + 1}. ${slide.title}</h3>
+                    <pre>${slide.content}</pre>
+                    ${slide.imageData ? 
+                        `<img src="${slide.imageData}" alt="Slide visual">` : 
+                        `<div class="error-message">Image not available</div>`}
+                </div>
+            `).join('');
+            
+            preview.style.display = 'block';
+            document.getElementById('downloadBtn').style.display = 'block';
+        }
+
+        function createPPTX(slides) {
+            presentation = new PptxGenJS();
+            presentation.layout = 'LAYOUT_WIDE';
+            presentation.company = 'AI PPT Generator';
+
+            slides.forEach((slide, index) => {
+                const pptSlide = presentation.addSlide();
+                
+                // Title
+                pptSlide.addText(slide.title, {
+                    x: 0.5, y: 0.5, w: 5, h: 0.8,
+                    fontSize: 24,
+                    bold: true,
+                    color: '2c3e50'
+                });
+
+                // Content
+                pptSlide.addText(slide.content, {
+                    x: 0.5, y: 1.5, w: 5, h: 4,
+                    fontSize: 18,
+                    bullet: { code: '2022' },
+                    color: '34495e'
+                });
+
+                // Image
+                if (slide.imageData) {
+                    pptSlide.addImage({
+                        data: slide.imageData,
+                        x: 6.0, y: 0.5,
+                        w: 4.5, h: 3.5,
+                        sizing: { type: 'cover' }
+                    });
+                }
+            });
+        }
+
+        function toggleUI(loading) {
+            document.getElementById('loading').style.display = loading ? 'block' : 'none';
+            document.getElementById('downloadBtn').style.display = loading ? 'none' : 'block';
+            document.getElementById('preview').style.display = loading ? 'none' : 'block';
+            document.querySelector('button').disabled = loading;
+        }
+
+        function showError(message) {
+            document.getElementById('error').textContent = message;
+        }
+
+        function clearError() {
+            document.getElementById('error').textContent = '';
+        }
+
+        function downloadPPT() {
+            if (presentation) {
+                presentation.writeFile({
+                    fileName: `AI Presentation - ${document.getElementById('topic').value.trim() || 'Untitled'}.pptx`
+                });
+            }
+        }
+    </script>
+</body>
+</html>
